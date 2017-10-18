@@ -1,4 +1,13 @@
 version: '2'
+
+catalog:
+  name: "CNETS Storage"
+  version: "v1.0.0"
+  description: "File Storage & Share powered by Fujitsu CNETS Team"
+  uuid: cnets-storage-0
+  minimum_rancher_version: v0.51.0
+  questions:
+
 services:
   mariadb:
     scale: 1
