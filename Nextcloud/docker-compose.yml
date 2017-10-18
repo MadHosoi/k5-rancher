@@ -1,0 +1,55 @@
+version: '2'
+volumes:
+  nextcloud/config:
+    external: true
+    driver: rancher-nfs
+  nextcloud/postgres:
+    external: true
+    driver: rancher-nfs
+  nextcloud/theme:
+    external: true
+    driver: rancher-nfs
+  nextcloud/data:
+    external: true
+    driver: rancher-nfs
+  nextcloud/html:
+    external: true
+    driver: rancher-nfs
+services:
+  nextcloud:
+    image: nextcloud:latest
+    volumes:
+    - nextcloud/data:/var/www/html/data
+    - nextcloud/config:/var/www/html/config
+    - nextcloud/html:/var/www/html
+    links:
+    - postgres:postgres
+    labels:
+      io.rancher.scheduler.affinity:host_label_ne: public=true
+  postgres-data:
+    image: busybox
+    volumes:
+    - nextcloud/postgres:/var/lib/postgresql/data/pgdata
+    labels:
+      io.rancher.container.start_once: 'true'
+  nextcloud-lb:
+    image: rancher/lb-service-haproxy:v0.7.9
+    ports:
+    - 80:80/tcp
+    labels:
+      io.rancher.scheduler.affinity:host_label: public=true
+      io.rancher.container.agent.role: environmentAdmin
+      io.rancher.container.create_agent: 'true'
+  postgres:
+    image: postgres:9.6
+    environment:
+      PGDATA: /var/lib/postgresql/data/pgdata
+      POSTGRES_DB: nextcloud
+      POSTGRES_PASSWORD: fujitsu
+      POSTGRES_USER: fujitsu
+    stdin_open: true
+    tty: true
+    volumes_from:
+    - postgres-data
+    labels:
+      io.rancher.sidekicks: postgres-data
