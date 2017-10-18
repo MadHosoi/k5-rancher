@@ -1,0 +1,60 @@
+version: '2'
+volumes:
+  nextcloud_data:
+    external: true
+    driver: rancher-nfs
+  nextcloud_db:
+    external: true
+    driver: rancher-nfs
+  nextcloud_config:
+    external: true
+    driver: rancher-nfs
+services:
+  mariadb:
+    image: mariadb:10
+    environment:
+      MYSQL_DATABASE: nextcloud
+      MYSQL_PASSWORD: Fujitsu.1017
+      MYSQL_ROOT_PASSWORD: Fujitsu.1017
+      MYSQL_USER: nextcloud
+    labels:
+      io.rancher.sidekicks: mariadb-data
+      io.rancher.container.hostname_override: container_name
+  nextcloud:
+    image: nextcloud:12-apache
+    volumes_from:
+    - nextcloud-data
+    labels:
+      io.rancher.sidekicks: nextcloud-data
+      io.rancher.container.hostname_override: container_name
+      io.rancher.scheduler.affinity:host_label_ne: public=true
+  mariadb-data:
+    image: mariadb:10
+    entrypoint:
+    - /bin/true
+    volumes:
+    - nextcloud_db:/var/lib/mysql
+    tty: true
+    labels:
+      io.rancher.container.start_once: 'true'
+      io.rancher.container.hostname_override: container_name
+  nextcloud-data:
+    image: nextcloud:12-apache
+    entrypoint:
+    - /bin/true
+    volumes:
+    - nextcloud_config:/var/www/html/config
+    - nextcloud_data:/var/www/html/data
+    labels:
+      io.rancher.container.start_once: 'true'
+      io.rancher.container.hostname_override: container_name
+      io.rancher.scheduler.affinity:host_label_ne: public=true
+  nextcloud-lb:
+    image: rancher/lb-service-haproxy:v0.7.9
+    ports:
+    - 80:80/tcp
+    - 443:443/tcp
+    labels:
+      io.rancher.scheduler.affinity:host_label: public=true
+      io.rancher.container.agent.role: environmentAdmin
+      io.rancher.container.create_agent: 'true'
