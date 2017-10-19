@@ -73,6 +73,9 @@ bot.command('files', (ctx) => {
         })
       ));
     }
+    else{
+      ctx.reply('There is no content.');
+    }
   });
 });
 
