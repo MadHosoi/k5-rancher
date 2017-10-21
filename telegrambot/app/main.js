@@ -80,11 +80,19 @@ bot.command('files', (ctx) => {
 });
 
 bot.action(/.+/, (ctx) => {
-  ctx.answerCallbackQuery('Downloading ${ctx.match[0]}!');
+  console.log(ctx.match);
+  ctx.answerCallbackQuery('Downloading ' + ctx.match[0] + '!');
+  // If photo
+ 
   ctx.replyWithPhoto({
     source: wfs.createReadStream(telegramPath + ctx.match[0])
   });
-
+  //Else If doc
+  /*
+  ctx.replyWithDocument({
+    source: wfs.createReadStream(telegramPath + ctx.match[0])
+  });
+  */
 });
 
 bot.on('photo', (ctx) => {
