@@ -5,7 +5,7 @@ heat_template_version: 2013-05-23
 # on Fujitsu's Cloud Service K5 IaaS Platform
 #
 #
-description: Deploy 3 Hosts from Snapshot with Docker & Rancher Agent
+description: Deploy Host with Docker & Rancher Agent
 
 # Input parameters
 parameters:
@@ -13,7 +13,7 @@ parameters:
     type: string
     label: Name preffix
     description: Name preffix used to concat to all the resources (unique for K5 project)
-    default: "cnets-rancher-host2"
+    default: "cnets_rancher_host"
   k5_ubuntu_image:
     type: string
     label: Image name or ID
@@ -28,22 +28,27 @@ parameters:
     type: string
     label: Key name
     description: Name of key-pair to be used for compute instance
-    default: "cnets-mdiego"
+    default: "cnets_rancher"
   private_net:
     type: string
     label: private network id
     description: id of private network 
-    default: "e67f48b2-28fd-4ec1-b40a-3ccbc5280398"
+    default: "4a03178c-4cd1-4b44-ab6f-c8d9459b0ab2"
   security_group:
     type: string
     label: security group
     description: security group 
-    default: "cnets-rancher-access"    
+    default: "cnets_rancher-access"    
   az:
     type: string
     label: Availability Zone
     description: Region AZ to use
-    default: "uk-1a"
+    default: "de-1a"
+  disk_size:
+    type: number
+    label: Disk Size
+    description: Block Storage Disk Size in GB
+    default: 20    
   rancher_server:
     type: string
     label: Rancher Server IP
@@ -71,7 +76,7 @@ resources:
           template: "$name_preffix-box"
           params:
             "$name_preffix": { get_param: name_preffix } 
-      size: 40
+      size: { get_param: disk_size }
       volume_type: "M1"
       image : { get_param: k5_ubuntu_image }
 
@@ -91,7 +96,7 @@ resources:
       admin_user: ubuntu
       image : { get_param: k5_ubuntu_image }
       metadata: { "fcx.autofailover": True }
-      block_device_mapping: [{"volume_size": "40", "volume_id": { get_resource: rancherserver_sys_vol }, "delete_on_termination": True, "device_name": "/dev/vda"}]
+      block_device_mapping: [{"volume_size": { get_param: disk_size }, "volume_id": { get_resource: rancherserver_sys_vol }, "delete_on_termination": True, "device_name": "/dev/vda"}]
       networks:
         - port: { get_resource: server_port }
       user_data_format: RAW
@@ -112,7 +117,8 @@ resources:
               - sudo apt-get install -y docker-ce
               - sleep 90
               - sudo usermod -aG docker ubuntu
-              - sudo docker run -e CATTLE_AGENT_IP="$app_ip"  -e CATTLE_HOST_LABELS='region=$az'  --rm --privileged -v /var/run/docker.sock:/var/run/docker.sock -v /var/lib/rancher:/var/lib/rancher rancher/agent:v1.2.6 http://$server_ip:8080/v1/scripts/A9305DC2F6C804E5A934:1483142400000:IxjJ51lxGOkGxvDPeSxtPNeujM
+              # - sudo docker run -e CATTLE_AGENT_IP="$app_ip"  -e CATTLE_HOST_LABELS='region=$az'  --rm --privileged -v /var/run/docker.sock:/var/run/docker.sock -v /var/lib/rancher:/var/lib/rancher rancher/agent:v1.2.6 http://$server_ip:8080/v1/scripts/A9305DC2F6C804E5A934:1483142400000:IxjJ51lxGOkGxvDPeSxtPNeujM
+              - sudo docker pull rancher/agent:v1.2.6
           params:
             $app_ip: { get_attr: [server_port, fixed_ips, 0, ip_address]}
             $server_ip: { get_param: rancher_server }

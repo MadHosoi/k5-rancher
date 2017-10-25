@@ -83,7 +83,7 @@ resources:
       dns_nameservers:
         - 62.60.39.9
         - 62.60.39.10
-  
+        - 8.8.8.8
   server_port:
     type: OS::Neutron::Port
     depends_on: [private_network, security_group]
@@ -123,6 +123,14 @@ resources:
           protocol: tcp
           port_range_min: 80
           port_range_max: 80
+        - remote_ip_prefix: 0.0.0.0/0
+          protocol: tcp
+          port_range_min: 8080
+          port_range_max: 8080
+        - remote_ip_prefix: 0.0.0.0/0
+          protocol: tcp
+          port_range_min: 443
+          port_range_max: 443
         - remote_ip_prefix: { get_param: privatecidr }
           protocol: tcp
           port_range_min: 1
@@ -184,10 +192,15 @@ resources:
               - sudo add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"
               - sudo apt-get update
               - apt-cache policy docker-ce
-              - sudo apt-get install -y docker-ce
+              - sudo apt-get install -y docker-ce nfs-kernel-server
               - sleep 90
               - sudo usermod -aG docker ubuntu
               - sudo docker pull rancher/server:stable
+              - sudo mkdir -p /var/nfs
+              - sudo chmod 777 /var/nfs
+              - sudo chown nobody:nogroup /var/nfs/
+              - echo '/var/nfs 10.0.10.0/24(rw,sync,no_subtree_check,no_root_squash)' >> /etc/exports
+              - sudo service nfs-kernel-server restart
           params:
             $app_ip: { get_attr: [server_port, fixed_ips, 0, ip_address]}
             message: "Installation of Docker Service Complete"

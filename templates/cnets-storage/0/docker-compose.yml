@@ -1,13 +1,10 @@
 version: '2'
 volumes:
   nextcloud_data:
-    external: true
     driver: rancher-nfs
   nextcloud_db:
-    external: true
     driver: rancher-nfs
   nextcloud_config:
-    external: true
     driver: rancher-nfs
 services:
   mariadb:
