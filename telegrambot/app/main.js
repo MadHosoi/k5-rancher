@@ -82,17 +82,18 @@ bot.command('files', (ctx) => {
 bot.action(/.+/, (ctx) => {
   console.log(ctx.match);
   ctx.answerCallbackQuery('Downloading ' + ctx.match[0] + '!');
-  // If photo
- 
-  ctx.replyWithPhoto({
-    source: wfs.createReadStream(telegramPath + ctx.match[0])
-  });
-  //Else If doc
-  /*
-  ctx.replyWithDocument({
-    source: wfs.createReadStream(telegramPath + ctx.match[0])
-  });
-  */
+  const photoext = "jpg,gif,png,bmp,svg";
+  var ext = ctx.match[0].split('.').pop();
+  if (photoext.includes(ext)){
+    ctx.replyWithPhoto({
+      source: wfs.createReadStream(telegramPath + ctx.match[0])
+    });
+  }
+  else{
+    ctx.replyWithDocument({
+      source: wfs.createReadStream(telegramPath + ctx.match[0])
+    });  
+  }
 });
 
 bot.on('photo', (ctx) => {
@@ -113,7 +114,7 @@ bot.on('document', (ctx) => {
 
 function upload(ctx, url){
   ctx.state.url = url;
-
+  console.log(ctx.state.url);
   var username = ctx.message.from.username;
   
   request.get(ctx.state.url, function (error, response, body) {
@@ -128,6 +129,7 @@ function upload(ctx, url){
     console.log(data);
 
     var img = JSON.parse(data);
+    console.log(img);
     var path = img.result.file_path;
     
     ctx.state.url = "https://api.telegram.org/file/bot" + process.env.BOT_TOKEN + "/" + path;
