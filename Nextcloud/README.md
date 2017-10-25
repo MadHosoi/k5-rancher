@@ -8,6 +8,10 @@ Add a new class called FujitsuK5 as a copy of OpenStack.php file.
 
 Modify the methods related to authentication, generateToken, getCredentials, etc..
 
+Reference:
+
+/lib/OpenCloud/Identity/Service.php
+
 Modify files of Nextcloud/server:
 
 Nextcloud/server/apps/files_external/lib/Lib/Storage/Swift.php
