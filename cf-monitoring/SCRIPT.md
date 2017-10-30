@@ -1,0 +1,1 @@
+curl -X GET https://api.uk-1.paas-cf.cloud.global.fujitsu.com/v2/apps -H 'authorization: $CF_TOKEN' -H 'cache-control: no-cache' -H 'host: api.uk-1.paas-cf.cloud.global.fujitsu.com'
