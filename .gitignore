@@ -53,7 +53,11 @@ jspm_packages
 .env
 
 Secrets
+<<<<<<< HEAD
 
 madhosoibot/include
 madhosoibot/bin
 madhosoibot/lib
+=======
+.kube
+>>>>>>> 75d70ee2f5d81cba20f6faa6fd026aad7c36092e
