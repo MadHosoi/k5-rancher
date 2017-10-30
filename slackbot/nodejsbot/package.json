@@ -1,0 +1,19 @@
+{
+  "name": "madhosoibot",
+  "version": "1.0.0",
+  "description": "Slack App to talk in Slack",
+  "main": "main.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "SLACK",
+    "K5",
+    "MadHosoi"
+  ],
+  "author": "miguelangel.diego@ts.fujitsu.com",
+  "license": "ISC",
+  "dependencies": {
+    "botkit": "^0.6.4"
+  }
+}
