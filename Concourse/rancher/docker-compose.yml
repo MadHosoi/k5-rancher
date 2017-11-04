@@ -1,0 +1,65 @@
+version: '2'
+volumes:
+  concourse_web:
+    external: true
+    driver: rancher-nfs
+  concourse_db:
+    external: true
+    driver: rancher-nfs
+  concourse_worker:
+    external: true
+    driver: rancher-nfs
+services:
+  concourse-db:
+    image: postgres:9.5
+    environment:
+      PGDATA: /database
+      POSTGRES_DB: concourse
+      POSTGRES_PASSWORD: fujitsu
+      POSTGRES_USER: concourse
+    volumes:
+    - concourse_db:/var/lib/postgresql/
+    labels:
+      io.rancher.scheduler.affinity:host_label_ne: public=true
+  concourse-web:
+    image: concourse/concourse
+    environment:
+      CONCOURSE_BASIC_AUTH_PASSWORD: fujitsu
+      CONCOURSE_BASIC_AUTH_USERNAME: concourse
+      CONCOURSE_EXTERNAL_URL: http://185.170.26.160:8081
+      CONCOURSE_POSTGRES_DATABASE: concourse
+      CONCOURSE_POSTGRES_HOST: concourse-db
+      CONCOURSE_POSTGRES_PASSWORD: fujitsu
+      CONCOURSE_POSTGRES_USER: concourse
+    volumes:
+    - concourse_web:/concourse-keys
+    links:
+    - concourse-db:concourse-db
+    - concourse-db:concourse-db
+    command:
+    - web
+    labels:
+      io.rancher.scheduler.affinity:host_label_ne: public=true
+  concourse-worker:
+    privileged: true
+    image: concourse/concourse
+    environment:
+      CONCOURSE_TSA_HOST: concourse-web
+    volumes:
+    - concourse_worker:/concourse-keys
+    links:
+    - concourse-web:concourse-web
+    - concourse-web:concourse-web
+    command:
+    - worker
+    labels:
+      io.rancher.scheduler.affinity:host_label_ne: public=true
+      io.rancher.scheduler.affinity:container_soft_ne: concourse-concourse-web-1
+  concourse-lb:
+    image: rancher/lb-service-haproxy:v0.7.9
+    ports:
+    - 8081:8081/tcp
+    labels:
+      io.rancher.scheduler.affinity:host_label: public=true
+      io.rancher.container.agent.role: environmentAdmin
+      io.rancher.container.create_agent: 'true'
