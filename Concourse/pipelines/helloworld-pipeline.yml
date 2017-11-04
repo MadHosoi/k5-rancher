@@ -1,9 +1,23 @@
 ---
+
+resource_types:
+- name: slack-notification
+  type: docker-image
+  source:
+    repository: cfcommunity/slack-notification-resource
+    tag: latest
+
 resources:
 - name: k5-rancher
   type: git
   source:
     uri: https://github.com/madhosoi/k5-rancher.git
+
+- name: madhosoi-slack
+  type: slack-notification
+  source:
+    url: https://madhosoilabs.slack.com/services/B7RHUAUJZ
+
 
 jobs:
 - name: job-hello-world
@@ -12,3 +26,13 @@ jobs:
   - get: k5-rancher
   - task: hello-world
     file: k5-rancher/Concourse/pipelines/helloworld-task.yml
+- name: slack-alert
+  public: true
+  plan:
+  - put: madhosoi-slack
+    params:
+      text: <!channel> Hi everybody!
+      channel: "#general"
+      username: madhosoibot
+      icon_url: http://cl.ly/image/3e1h0H3H2s0P/concourse-logo.png
+
