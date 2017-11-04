@@ -10,3 +10,5 @@ https://github.com/starkandwayne/concourse-tutorial
 # Hello world task, pipeline & github integration
 
 fly -t k5-cnets set-pipeline -p helloworld-pipeline -c pipelines/helloworld-pipeline.yml
+
+If some changes occurs in the repository, the pipeline launch a new cycle..
