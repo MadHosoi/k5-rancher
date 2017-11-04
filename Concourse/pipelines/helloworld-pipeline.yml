@@ -16,8 +16,7 @@ resources:
 - name: madhosoi-slack
   type: slack-notification
   source:
-    url: https://madhosoilabs.slack.com/services/B7RHUAUJZ
-
+    url: https://hooks.slack.com/services/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
 
 jobs:
 - name: job-hello-world
