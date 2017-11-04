@@ -7,4 +7,4 @@ image_resource:
 
 run:
   path: echo
-  args: [hello world from $(hostname)]
+  args: [Hello World from $(hostname)]
