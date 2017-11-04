@@ -12,3 +12,5 @@ https://github.com/starkandwayne/concourse-tutorial
 fly -t k5-cnets set-pipeline -p helloworld-pipeline -c pipelines/helloworld-pipeline.yml
 
 If some changes occurs in the repository, the pipeline launch a new cycle..
+
+Then, i will link the message of a file in Github to task & slack
