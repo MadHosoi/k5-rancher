@@ -1,6 +1,6 @@
 ---
 resources:
-- name: resource-tutorial
+- name: k5-rancher
   type: git
   source:
     uri: https://github.com/madhosoi/k5-rancher.git
