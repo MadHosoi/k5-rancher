@@ -23,6 +23,7 @@ jobs:
   public: true
   plan:
   - get: k5-rancher
+    trigger: true
   - task: hello-world
     file: k5-rancher/Concourse/pipelines/helloworld-task.yml
   - put: madhosoi-slack
