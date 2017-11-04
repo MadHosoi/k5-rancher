@@ -25,9 +25,6 @@ jobs:
   - get: k5-rancher
   - task: hello-world
     file: k5-rancher/Concourse/pipelines/helloworld-task.yml
-- name: slack-alert
-  public: true
-  plan:
   - put: madhosoi-slack
     params:
       text: <!channel> Hi everybody!
