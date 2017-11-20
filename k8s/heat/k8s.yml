@@ -1,0 +1,393 @@
+heat_template_version: 2013-05-23
+# Author: Graham Land
+# Date: 26/05/2017
+# Purpose: Deploy Kubernetes on Fujitsu's K5 IaaS Platform
+#
+# Twitter: @allthingsclowd
+# Blog: https://allthingscloud.eu
+# Gist: https://gist.github.com/allthingsclowd/4814fb3895ef5842befbb90cdf93244e
+#
+
+description: Simple Kubernetes Non HA Deployment
+
+# Input parameters
+parameters:
+  k5_image:
+    type: string
+    label: Image name or ID
+    description: Image to be used for compute instance
+    default: "CentOS 7.2 64bit (English) 02"    
+  flavor:
+    type: string
+    label: Flavor
+    description: Type of instance (flavor) to be used
+    default: "S-1"
+  key_az:
+    type: string
+    label: Key name
+    description: Name of key-pair to be used for compute instance
+    default: "KUBE-KP-AZ2"
+  public_net_az:
+    type: string
+    label: external network ID
+    description: Public network
+    default: "58e863e5-7d31-4f32-9178-370a3288db42"
+  az:
+    type: string
+    label: Availability Zone
+    description: Region AZ to use
+    default: "de-1b"
+  az_dns:
+    type: string
+    label: Availability Zone DNS Servers
+    description: Availability Zone DNS Servers to use
+    default: ["185.149.227.9", "185.149.227.10"]
+  my_ip:
+    type: string
+    label: External management IP
+    description: IP address allowed for access to jump server on SSH
+    default: "81.40.213.36/32"
+  kube_router:
+    type: string
+    label: Kubernetes Router Used to Provide External Access to VMs
+    description: Kubernetes Router Used to Provide External Access to VMs
+    default: "a5f0bd23-fe42-4933-8b9c-0525dcc7facd"
+  default_security_group:
+    type: string
+    label: Kubernetes SG
+    description: Kubernetes Security Group
+    default: "ab5bda89-d74b-4f95-8ae7-dcc39dd2bcd4"
+  kube_service_network:
+    type: string
+    label: Kube services network
+    description: Kubernetes Services Network
+    default: "10.233.0.0/18"
+  kube_pod_network:
+    type: string
+    label: Kube pods network
+    description: Kubernetes Pods Network
+    default: "10.233.64.0/18"
+    
+# K5 Infrastructure resources to be built
+resources:
+
+  # Create a private network in availability zone 1
+  kube_private_net_az:
+    type: OS::Neutron::Net
+    properties:
+      availability_zone: { get_param: az }
+      name: "kube_private_net1"
+
+  # Create a new subnet on the private network
+  kube_private_subnet_az:
+    type: OS::Neutron::Subnet
+    depends_on: kube_private_net_az
+    properties:
+      availability_zone: { get_param: az }
+      name: "Kube_private_subnet_az"
+      network_id: { get_resource: kube_private_net_az }
+      cidr: "192.168.200.0/24"
+      gateway_ip: "192.168.200.254"
+      allocation_pools:
+        - start: "192.168.200.100"
+          end: "192.168.200.150"
+      dns_nameservers: ["185.149.225.9", "185.149.225.10"]
+        
+  # Connect an interface on the web tier network's subnet to the router
+  az_router_interface:
+    type: OS::Neutron::RouterInterface
+    depends_on: [kube_private_subnet_az]
+    properties:
+      router_id: { get_param: kube_router }
+      subnet_id: { get_resource: kube_private_subnet_az } 
+
+  # Create jump server security group
+  jump_security_group:
+    type: OS::Neutron::SecurityGroup
+    properties:
+      description: kube stack jump server security group
+      name: kube-jumpbox
+      rules:
+        # allow inbound ssh from my ip
+        - remote_ip_prefix: { get_param: my_ip }
+          protocol: tcp
+          port_range_min: 22
+          port_range_max: 22
+        - remote_ip_prefix: { get_param: my_ip }
+          protocol: icmp
+  
+  # Create lbaas server security group
+  app_frontend_security_group:
+    type: OS::Neutron::SecurityGroup
+    properties:
+      description: kube stack network connector security group
+      name: sock-shop-frontend
+      rules:
+        # allow http traffic to etcd sock-shop service
+        - remote_ip_prefix: "0.0.0.0/0"
+          protocol: tcp
+          port_range_min: 30001
+          port_range_max: 30001
+
+
+################### JumpBox  - AZ 1 ######################################################################
+
+  # Create a new port for the server interface, assign an ip address and security group    
+  jump-server-port:
+    type: OS::Neutron::Port
+    depends_on: [ jump_security_group ]
+    properties:
+      availability_zone: { get_param: az }
+      network_id: { get_resource: kube_private_net_az }
+      security_groups: [{ get_resource: jump_security_group }, { get_param: default_security_group }]
+
+  # Allocate a floating/global ip address
+  jump-server-floating-ip:
+    type: OS::Neutron::FloatingIP
+    properties:
+      availability_zone: { get_param: az }
+      floating_network_id: { get_param: public_net_az }
+
+  # Assign a floating/global ip address to the fixed server ip address
+  jump-server-floating-ip-association:
+    type: OS::Neutron::FloatingIPAssociation
+    depends_on: jump-server-floating-ip
+    properties:
+      floatingip_id: { get_resource: jump-server-floating-ip }
+      port_id: { get_resource: jump-server-port }
+
+  # Create a system volume for use with the server
+  jump-sys-vol:
+    type: OS::Cinder::Volume
+    properties:
+      availability_zone: { get_param: az }
+      name: "jump-box-vol"
+      size: 30
+      volume_type: "M1"
+      image : { get_param: k5_image }
+
+  # Build a server using the system volume defined above
+  jump-server:
+    type: OS::Nova::Server
+    depends_on: [ etcd1-server, worker1-server, worker2-server, jump-server-port ]
+    properties:
+      key_name: { get_param: key_az }
+      image: { get_param: k5_image }
+      flavor: { get_param: flavor }
+      admin_user: k5user
+      metadata: { "fcx.autofailover": True }
+      block_device_mapping: [{"volume_size": "30", "volume_id": {get_resource: jump-sys-vol}, "delete_on_termination": True, "device_name": "/dev/vda"}]
+      # Create private key file to enable SSH to remaining servers in the environment
+      user_data_format: RAW
+      user_data:
+        str_replace:
+          template: |
+            #cloud-config
+            write_files:
+              - path: /root/.ssh/id_rsa
+                content: |
+                  -----BEGIN RSA PRIVATE KEY-----
+                  MIIEoQIBAAKCAQEA4MBSCRr6XOdLBsVSF3x3X/Y+jSoCP4walw5x/8A9g+kF9vuC
+                  lBU32TlQD/k1B4mxODhxTi1pzmw7Se/ccu3dlGivRgKuQzplVMeCJKAd15MxTr8i
+                  9ZKlwEj02xxBIzl58pVlHGIGVLwzxyfKtzOSFkEVdUYmJUvifoTYM5R5aWPI2Rhh
+                  hvkxtmz+WHC67dePcrzAaE0KizRWF4xRP/ZFUXUwcB/Z2fbF5RPocARBjbZgKDb4
+                  ufC0v9eKdn6mDQDu/Vq7VY8058efitNcfqxhx5d+t0EpwZCha6J7/3KJa9rXABzH
+                  WrVt1Tk/1F/Z8h/VNyo0k1KLMlBlsHZH5BSMgQIBIwKCAQBmvlFjP4hk/AUKaNUS
+                  DQNfEXuuPxb4eo/QBpqDixTOlmkgcvndS4c+ux1JIXdT5yxxeONW8DBeXVzumYlZ
+                  HEgJVG1h1Vb6KVLk7X1SklbI8tS2SL+GNGkHcc8FFDsIydFY89ZzYALk6FIvKCIn
+                  3Q+VJREfqwofraleaJ1ZaHIESgPzzPHoVc9//51rtqc2pjmmCu3BsJkR8isAiiyL
+                  LiegC9FIcXXGcgeMWqFBPqHUELcZXTaUYIu/Ie8FBvDXiZMWOQFbemQJczF8BS3j
+                  YFoGXoY6c8y052ekh8FGziJgy35gHf3ygUMnaVLirJpG0i3SH3M0ZHkVeP8fcw5x
+                  uFFLAoGBAPqx+ubMIM/tH4X+zUD7mgaX8+EByd8IUKLwVTXGS7XzuAnkVTBr58bC
+                  AOCtKX9oLcR40J3Y5N0rzZRmzs7+YNXnK2VQTYbZFPWfD6giKuy+JFc+5Ej+Men/
+                  dOviiF74V8dsHtSwjX/CStzLYdEy6+xyA3Q0USPeVAQKvXDlOe27AoGBAOWBzSmO
+                  nKvhTk/+A+wqseq/kPdO0NyrofUWCNoJNZivo0y9UnfL9Y6gDMcEIcAlpAsn6nN8
+                  eKXh77s0sKg3IydVkqMNJfM6Bq2seF/7HrAbhGHYf5D3pIS0RJlSBz8/xeshvFcn
+                  rSsst/25JHdESCSJgfRcZZ51A7OQ7SdmF2zzAoGBAKS+Gegfvcp3QJnh9Jhq0u5j
+                  2scPzc0UF7uH/Xsb6Jwj0LYLE2j2c70gZvoLZGmq3D9IFA/07irw5i5SMCGf2Twb
+                  kYu4bXXfHGbk3mcsZVm+x2yIaiFWldRIyS1LuLNv/ytHDPIq4KRpvCqxiWw3Z9Xk
+                  he1G8334gFptdSzuZ+VdAoGAVT7XLLFQIpWDfMwQFeP48MrPcczRPAU8J9T7+Tae
+                  4PDHoCkQAJw2orB5xkNc/jnd2EIGn+xnU45u/GQHGeiYB0urfmP4JyQuXcO3rp8a
+                  BuWmMvikaQuGP+svbCXILW91ZfaWaYPD+hfskXCnJPway74Lsoi4B6fOLMDNHUMt
+                  RbkCgYAi4KlL+fT5xJ9X3EbYxQ4P2TAEUAwKh7yvpoFVH/OuKZedIi2sHNOkb895
+                  qlcmVtbD96T0m4sZ2UVk0oDURsjp7tK8pIdCqXkxx+Y/cSEc+1R/3J0GcUHt2cbc
+                  YmDPfr1iqizT0n9em0B51SQb3UH88Egf56GHXiVaEZYc7/o0DQ==
+                  -----END RSA PRIVATE KEY-----
+              - path: /home/k5user/kubernetes.cfg
+                content: |
+                  [etcd]
+                  $etcd1_az_ip
+                  
+                  [kube-master]
+                  $etcd1_az_ip
+                  
+                  [kube-node]
+                  $worker1_az_ip
+                  $worker2_az_ip
+                                    
+                  [k8s-cluster:children]
+                  kube-node
+                  kube-master
+            runcmd:
+              - chmod 0600 /root/.ssh/id_rsa
+              - yum makecache fast
+              - yum install -y git
+              - yum install -y epel-release
+              - yum install -y ansible
+              - yum install -y python-netaddr
+              - yum install -y python-pip
+              - pip install --upgrade pip
+              - pip install --upgrade jinja2
+              - mkdir -p /home/k5user/kubernetes/kargo
+              - git clone https://github.com/kubernetes-incubator/kargo.git /home/k5user/kubernetes/kargo
+              - cd /home/k5user/kubernetes/kargo
+              - git reset --hard 9e64267
+              - cp /home/k5user/kubernetes.cfg /home/k5user/kubernetes/kargo/inventory/inventory.cfg
+              - ansible-playbook -u k5user -b -i inventory/inventory.cfg cluster.yml
+              - ssh k5user@$etcd1_az_ip 'kubectl create -f "https://github.com/microservices-demo/microservices-demo/blob/master/deploy/kubernetes/complete-demo.yaml?raw=true"'
+              - ssh k5user@$etcd1_az_ip 'kubectl version && kubectl get nodes && kubectl get pods --all-namespaces && sudo docker ps'
+          params:
+            $etcd1_az_ip: { get_attr: [ etcd1-server, first_address ] }
+            $worker1_az_ip: { get_attr: [ worker1-server, first_address ] }
+            $worker2_az_ip: { get_attr: [ worker2-server, first_address ] }
+            message: "Installation Complete"      
+      name: "kube-jumpbox-az"
+      networks:
+        - port: { get_resource: jump-server-port }
+
+##########################################################################################################
+
+################### Kube etcd master 1 - Net 1  - AZ 1 ##############################################################################
+
+  # Create a new port for the server interface, assign an ip address and security group    
+  etcd1-server-port:
+    type: OS::Neutron::Port
+    properties:
+      availability_zone: { get_param: az }
+      network_id: { get_resource: kube_private_net_az }
+      security_groups: [{ get_resource: app_frontend_security_group }, { get_param: default_security_group }]
+      allowed_address_pairs:
+        - ip_address: { get_param: kube_service_network }
+        - ip_address: { get_param: kube_pod_network }
+
+  # Allocate a floating/global ip address
+  etcd1-server-floating-ip:
+    type: OS::Neutron::FloatingIP
+    properties:
+      availability_zone: { get_param: az }
+      floating_network_id: { get_param: public_net_az }
+
+  # Assign a floating/global ip address to the fixed server ip address
+  etcd1-server-floating-ip-association:
+    type: OS::Neutron::FloatingIPAssociation
+    depends_on: jump-server-floating-ip
+    properties:
+      floatingip_id: { get_resource: etcd1-server-floating-ip }
+      port_id: { get_resource: etcd1-server-port }
+ 
+  # Create a system volume for use with the server
+  etcd1-sys-vol:
+    type: OS::Cinder::Volume
+    properties:
+      availability_zone: { get_param: az }
+      name: "etcd1-boot-vol"
+      size: 30
+      volume_type: "M1"
+      image : { get_param: k5_image }
+
+  # Build a server using the system volume defined above
+  etcd1-server:
+    type: OS::Nova::Server
+    # depends_on: [ jump-server,etcd3-server,etcd1-server-port,etcd1-sys-vol ]
+    properties:
+      key_name: { get_param: key_az }
+      image: { get_param: k5_image }
+      flavor: { get_param: flavor }
+      admin_user: k5user
+      metadata: { "fcx.autofailover": True }
+      block_device_mapping: [{"volume_size": "30", "volume_id": {get_resource: etcd1-sys-vol}, "delete_on_termination": True, "device_name": "/dev/vda"}]
+      name: "etcd1_az"
+      networks:
+        - port: { get_resource: etcd1-server-port }
+
+###########################################################################################################        
+
+################### worker 1 - Net 1  - AZ 1 ##############################################################################
+
+  # Create a new port for the server interface, assign an ip address and security group    
+  worker1-server-port:
+    type: OS::Neutron::Port
+    properties:
+      availability_zone: { get_param: az }
+      network_id: { get_resource: kube_private_net_az }
+      # security_groups: [{ get_resource: web_security_group }]
+      allowed_address_pairs:
+        - ip_address: { get_param: kube_service_network }
+        - ip_address: { get_param: kube_pod_network }
+ 
+  # Create a system volume for use with the server
+  worker1-sys-vol:
+    type: OS::Cinder::Volume
+    properties:
+      availability_zone: { get_param: az }
+      name: "worker1-boot-vol"
+      size: 30
+      volume_type: "M1"
+      image : { get_param: k5_image }
+
+  # Build a server using the system volume defined above
+  worker1-server:
+    type: OS::Nova::Server
+    # depends_on: [ jump-server ]
+    properties:
+      key_name: { get_param: key_az }
+      image: { get_param: k5_image }
+      flavor: { get_param: flavor }
+      admin_user: k5user
+      metadata: { "fcx.autofailover": True }
+      block_device_mapping: [{"volume_size": "30", "volume_id": {get_resource: worker1-sys-vol}, "delete_on_termination": True, "device_name": "/dev/vda"}]
+      name: "worker1_az"
+      networks:
+        - port: { get_resource: worker1-server-port }
+
+###########################################################################################################
+
+################### worker 2 - Net 1  - AZ 1 ##############################################################################
+
+  # Create a new port for the server interface, assign an ip address and security group    
+  worker2-server-port:
+    type: OS::Neutron::Port
+    properties:
+      availability_zone: { get_param: az }
+      network_id: { get_resource: kube_private_net_az }
+      # security_groups: [{ get_resource: web_security_group }]
+      allowed_address_pairs:
+        - ip_address: { get_param: kube_service_network }
+        - ip_address: { get_param: kube_pod_network }
+ 
+  # Create a system volume for use with the server
+  worker2-sys-vol:
+    type: OS::Cinder::Volume
+    properties:
+      availability_zone: { get_param: az }
+      name: "worker2-boot-vol"
+      size: 30
+      volume_type: "M1"
+      image : { get_param: k5_image }
+
+  # Build a server using the system volume defined above
+  worker2-server:
+    type: OS::Nova::Server
+    # depends_on: [ jump-server ]
+    properties:
+      key_name: { get_param: key_az }
+      image: { get_param: k5_image }
+      flavor: { get_param: flavor }
+      admin_user: k5user
+      metadata: { "fcx.autofailover": True }
+      block_device_mapping: [{"volume_size": "30", "volume_id": {get_resource: worker2-sys-vol}, "delete_on_termination": True, "device_name": "/dev/vda"}]
+      name: "worker2_az"
+      networks:
+        - port: { get_resource: worker2-server-port }
+
+###########################################################################################################

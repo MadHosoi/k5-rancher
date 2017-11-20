@@ -1,0 +1,32 @@
+apiVersion: v1
+kind: ReplicationController
+metadata:
+  name: rancher-ingress-controller
+  labels:
+    k8s-app: rancher-ingress-lb
+spec:
+  replicas: 1
+  selector:
+    k8s-app: rancher-ingress-lb
+  template:
+    metadata:
+      labels:
+        k8s-app: rancher-ingress-lb
+        name: rancher-ingress-lb
+    spec:
+      containers:
+      - image: rancher/ingress-controller:dev
+        name: rancher-ingress-lb
+        env:
+          - name: CATTLE_URL
+            value: "http://10.0.10.3:8080/v1"
+          - name: CATTLE_ACCESS_KEY
+            value: "462353D80E9A1911C6A1"
+          - name: CATTLE_SECRET_KEY
+            value: "rQwkzcwMcmkL2y9ywxYFBBtdCrg9RYyXHnqhqYeW"
+          - name: KUBERNETES_URL
+            value: "http://10.43.0.1"
+        args:
+        - ingress-controller
+        - --lb-controller=kubernetes
+        - --lb-provider=rancher

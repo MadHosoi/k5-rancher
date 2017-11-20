@@ -52,7 +52,7 @@ jspm_packages
 # dotenv environment variables file
 .env
 
-Secrets
+Secrets*
 
 madhosoibot/include
 madhosoibot/bin
