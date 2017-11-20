@@ -1,0 +1,7 @@
+name: cnets-mongodb
+description: |
+  Fujitsu CNETS MongoDB
+version: v1.0.0
+category: DB
+projectURL: https://github.com/MadHosoi/k5-rancher
+
